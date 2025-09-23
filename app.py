@@ -1,6 +1,10 @@
 """Streamlit app for managing internship applications."""
 from __future__ import annotations
 
+
+import importlib
+import json
+
 from datetime import date
 from pathlib import Path
 
@@ -9,6 +13,8 @@ import streamlit as st
 
 DATA_DIR = Path("data")
 EXCEL_PATH = DATA_DIR / "applications.xlsx"
+STATE_PATH = DATA_DIR / "sync_state.json"
+
 
 STATUS_OPTIONS = [
     "En attente",
@@ -37,13 +43,14 @@ def load_applications() -> pd.DataFrame:
     """Load existing applications from the Excel file."""
     if EXCEL_PATH.exists():
         df = pd.read_excel(EXCEL_PATH)
-        # Ensure expected columns exist even if the file was modified manually.
-        missing_columns = [column for column in COLUMNS if column not in df.columns]
-        for column in missing_columns:
-            df[column] = ""
-        return df[COLUMNS]
+    else:
+        df = pd.DataFrame(columns=COLUMNS)
 
-    return pd.DataFrame(columns=COLUMNS)
+    missing_columns = [column for column in COLUMNS if column not in df.columns]
+    for column in missing_columns:
+        df[column] = ""
+
+    return df
 
 
 def save_applications(df: pd.DataFrame) -> None:
@@ -117,6 +124,37 @@ def render_application_table(df: pd.DataFrame) -> None:
     )
 
 
+def render_sync_controls() -> None:
+    """Display controls to trigger email synchronisation."""
+    st.markdown("### Synchronisation e-mail")
+    col_status, col_button = st.columns([1, 1])
+
+    last_sync = ""
+    if STATE_PATH.exists():
+        try:
+            state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            last_sync = state.get("last_sync", "")
+        except Exception:
+            last_sync = ""
+
+    col_status.write(f"Dernière synchro : **{last_sync or 'Jamais'}**")
+
+    if col_button.button("Synchroniser la boîte mail maintenant", use_container_width=True):
+        with st.spinner("Synchronisation en cours..."):
+            mail_sync = importlib.import_module("mail_sync")
+            try:
+                summary = mail_sync.run_once()
+                st.success(
+                    "OK — {fetched} mails scannés • {created} créés • {updated} mis à jour".format(
+                        fetched=summary.get("fetched", 0),
+                        created=summary.get("created", 0),
+                        updated=summary.get("updated", 0),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Échec de la synchro : {exc}")
+        st.experimental_rerun()
+
 def render_status_chart(df: pd.DataFrame) -> None:
     """Display a simple bar chart by application status."""
     if df.empty:
@@ -188,6 +226,7 @@ def render_creation_form(df: pd.DataFrame) -> None:
             save_applications(updated_df)
             st.success("Candidature enregistrée avec succès !")
             reset_form_fields()
+
             st.rerun()
 
 
@@ -207,6 +246,9 @@ def main() -> None:
 
     ensure_data_directory()
     applications_df = load_applications()
+
+
+    render_sync_controls()
 
     render_metrics(applications_df)
     filtered_df = render_filters(applications_df)
