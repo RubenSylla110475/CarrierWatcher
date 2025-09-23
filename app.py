@@ -1,8 +1,10 @@
 """Streamlit app for managing internship applications."""
 from __future__ import annotations
 
+
 import importlib
 import json
+
 from datetime import date
 from pathlib import Path
 
@@ -12,6 +14,7 @@ import streamlit as st
 DATA_DIR = Path("data")
 EXCEL_PATH = DATA_DIR / "applications.xlsx"
 STATE_PATH = DATA_DIR / "sync_state.json"
+
 
 STATUS_OPTIONS = [
     "En attente",
@@ -152,7 +155,6 @@ def render_sync_controls() -> None:
                 st.error(f"Échec de la synchro : {exc}")
         st.experimental_rerun()
 
-
 def render_status_chart(df: pd.DataFrame) -> None:
     """Display a simple bar chart by application status."""
     if df.empty:
@@ -224,7 +226,8 @@ def render_creation_form(df: pd.DataFrame) -> None:
             save_applications(updated_df)
             st.success("Candidature enregistrée avec succès !")
             reset_form_fields()
-            st.experimental_rerun()
+
+            st.rerun()
 
 
 def main() -> None:
@@ -244,7 +247,9 @@ def main() -> None:
     ensure_data_directory()
     applications_df = load_applications()
 
+
     render_sync_controls()
+
     render_metrics(applications_df)
     filtered_df = render_filters(applications_df)
     render_status_chart(filtered_df)

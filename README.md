@@ -11,6 +11,7 @@ CarrierWatcher est une application Streamlit qui vous aide à suivre manuellemen
 - Stockage local dans un fichier Excel pour conserver toutes les candidatures.
 - Bouton de synchronisation pour importer automatiquement les e-mails de candidature Outlook (Microsoft 365).
 
+
 ## Prérequis
 
 - Python 3.9 ou supérieur
@@ -30,6 +31,7 @@ streamlit run app.py
 ```
 
 La première exécution crée automatiquement le dossier `data` ainsi que le fichier Excel de suivi. Vous pouvez ensuite accéder à l'application dans votre navigateur à l'adresse indiquée par Streamlit (généralement http://localhost:8501).
+
 
 ### Synchroniser votre boîte Outlook
 
@@ -69,5 +71,6 @@ Chaque ligne du fichier `data/applications.xlsx` contient les informations suiva
 - Début de stage
 - Dernier mail (horodatage du dernier e-mail synchronisé)
 - Source ("email" lorsqu'une candidature provient de la synchronisation)
+
 
 Ces colonnes peuvent être enrichies manuellement dans Excel si nécessaire, l'application les conservera lors des lectures suivantes.
