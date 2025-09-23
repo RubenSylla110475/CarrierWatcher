@@ -188,7 +188,7 @@ def render_creation_form(df: pd.DataFrame) -> None:
             save_applications(updated_df)
             st.success("Candidature enregistrée avec succès !")
             reset_form_fields()
-            st.experimental_rerun()
+            st.rerun()
 
 
 def main() -> None:
