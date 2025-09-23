@@ -153,7 +153,7 @@ def render_sync_controls() -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Échec de la synchro : {exc}")
-        st.experimental_rerun()
+        st.rerun()
 
 def render_status_chart(df: pd.DataFrame) -> None:
     """Display a simple bar chart by application status."""
