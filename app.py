@@ -1,12 +1,11 @@
 """Streamlit app for managing internship applications."""
 from __future__ import annotations
 
-
 import importlib
 import json
-
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from typing import Iterable
 
 import pandas as pd
 import streamlit as st
@@ -14,7 +13,6 @@ import streamlit as st
 DATA_DIR = Path("data")
 EXCEL_PATH = DATA_DIR / "applications.xlsx"
 STATE_PATH = DATA_DIR / "sync_state.json"
-
 
 STATUS_OPTIONS = [
     "En attente",
@@ -33,36 +31,68 @@ COLUMNS = [
     "Début de stage",
 ]
 
-
+# ------------------------
+# Fichiers & I/O
+# ------------------------
 def ensure_data_directory() -> None:
-    """Create the data directory when the app starts."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_applications() -> pd.DataFrame:
-    """Load existing applications from the Excel file."""
+    """Charge le fichier Excel, garantit les colonnes et normalise les types."""
     if EXCEL_PATH.exists():
         df = pd.read_excel(EXCEL_PATH)
     else:
         df = pd.DataFrame(columns=COLUMNS)
 
-    missing_columns = [column for column in COLUMNS if column not in df.columns]
-    for column in missing_columns:
-        df[column] = ""
+    # Ajoute colonnes manquantes
+    for c in COLUMNS:
+        if c not in df.columns:
+            df[c] = ""
 
-    return df
+    # Normalise types (évite NaN incohérents)
+    for c in ["Code candidature", "Entreprise", "Thématique", "Domaine", "Statut"]:
+        df[c] = df[c].fillna("").astype(str)
+
+    # Les dates peuvent venir en str, datetime, Timestamp… on laisse tel quel ici.
+    return df[COLUMNS]  # ordre de colonnes garanti
+
+
+def _to_datestr(value: object) -> str:
+    """Transforme ce qu'on a en 'YYYY-MM-DD' ou chaîne vide."""
+    if value in (None, "", pd.NaT):
+        return ""
+    if isinstance(value, str):
+        # Déjà formaté ? On tente un parse souple, sinon on renvoie tel quel.
+        try:
+            dt = pd.to_datetime(value, errors="raise").date()
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return value  # on ne casse pas si l'utilisateur saisit un texte
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return value.date().strftime("%Y-%m-%d")
+    if isinstance(value, date):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
 
 
 def save_applications(df: pd.DataFrame) -> None:
-    """Persist the applications dataframe to the Excel file."""
+    """Sauvegarde en forçant le formatage des dates."""
     ensure_data_directory()
+    df = df.copy()
+    for c in ["Date d'application", "Début de stage"]:
+        df[c] = df[c].map(_to_datestr)
+    # Sécurité: ne garder que les colonnes officielles
+    df = df.reindex(columns=COLUMNS)
     df.to_excel(EXCEL_PATH, index=False)
 
 
+# ------------------------
+# Filtrage & agrégats
+# ------------------------
 def filter_applications(
     df: pd.DataFrame, *, statuses: list[str] | None, domain: list[str] | None, theme: list[str] | None
 ) -> pd.DataFrame:
-    """Return the dataframe filtered according to the provided criteria."""
     filtered = df.copy()
     if statuses:
         filtered = filtered[filtered["Statut"].isin(statuses)]
@@ -73,15 +103,7 @@ def filter_applications(
     return filtered
 
 
-def format_date_for_storage(value: date | None) -> str:
-    """Convert a date to a string suitable for Excel storage."""
-    if value is None:
-        return ""
-    return value.strftime("%Y-%m-%d")
-
-
 def render_metrics(df: pd.DataFrame) -> None:
-    """Display aggregated metrics on top of the page."""
     total = len(df)
     accepted = (df["Statut"] == "Acceptée").sum()
     refused = (df["Statut"] == "Refusée").sum()
@@ -96,14 +118,13 @@ def render_metrics(df: pd.DataFrame) -> None:
 
 
 def render_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """Render sidebar filters and return the filtered dataframe."""
     st.sidebar.header("Filtres")
     status_selection = st.sidebar.multiselect("Statut", STATUS_OPTIONS)
 
-    domain_options = sorted(value for value in df["Domaine"].dropna().unique() if value)
+    domain_options = sorted(v for v in df["Domaine"].dropna().unique() if v)
     domain_selection = st.sidebar.multiselect("Domaine", domain_options)
 
-    theme_options = sorted(value for value in df["Thématique"].dropna().unique() if value)
+    theme_options = sorted(v for v in df["Thématique"].dropna().unique() if v)
     theme_selection = st.sidebar.multiselect("Thématique", theme_options)
 
     return filter_applications(
@@ -114,18 +135,23 @@ def render_filters(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# ------------------------
+# UI de visualisation
+# ------------------------
 def render_application_table(df: pd.DataFrame) -> None:
-    """Display the applications table with some styling."""
-    st.markdown("### Candidatures")
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.markdown("### Candidatures (vue filtrée)")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def render_status_chart(df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    status_counts = df["Statut"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
+    st.markdown("### Répartition par statut")
+    st.bar_chart(status_counts)
 
 
 def render_sync_controls() -> None:
-    """Display controls to trigger email synchronisation."""
     st.markdown("### Synchronisation e-mail")
     col_status, col_button = st.columns([1, 1])
 
@@ -155,18 +181,11 @@ def render_sync_controls() -> None:
                 st.error(f"Échec de la synchro : {exc}")
         st.rerun()
 
-def render_status_chart(df: pd.DataFrame) -> None:
-    """Display a simple bar chart by application status."""
-    if df.empty:
-        return
 
-    status_counts = df["Statut"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
-    st.markdown("### Répartition par statut")
-    st.bar_chart(status_counts)
-
-
+# ------------------------
+# Formulaire de création
+# ------------------------
 def reset_form_fields() -> None:
-    """Clear the Streamlit session state for the form fields."""
     for key in [
         "code",
         "company",
@@ -181,7 +200,6 @@ def reset_form_fields() -> None:
 
 
 def render_creation_form(df: pd.DataFrame) -> None:
-    """Render the form that allows the user to add a new application."""
     st.markdown("### Ajouter une candidature")
     with st.form("application_form", clear_on_submit=False):
         code = st.text_input("Code de candidature", key="code").strip()
@@ -217,8 +235,8 @@ def render_creation_form(df: pd.DataFrame) -> None:
                     "Thématique": [theme],
                     "Domaine": [domain],
                     "Statut": [status],
-                    "Date d'application": [format_date_for_storage(application_date)],
-                    "Début de stage": [format_date_for_storage(start_date)],
+                    "Date d'application": [_to_datestr(application_date)],
+                    "Début de stage": [_to_datestr(start_date)],
                 }
             )
 
@@ -226,35 +244,96 @@ def render_creation_form(df: pd.DataFrame) -> None:
             save_applications(updated_df)
             st.success("Candidature enregistrée avec succès !")
             reset_form_fields()
-
             st.rerun()
 
 
+# ------------------------
+# Mode Édition (modifier / supprimer)
+# ------------------------
+def _datecol(label: str) -> st.column_config.DateColumn:
+    return st.column_config.DateColumn(label=label, format="YYYY-MM-DD")
+
+
+def _selectcol(label: str, options: Iterable[str]) -> st.column_config.SelectboxColumn:
+    return st.column_config.SelectboxColumn(label=label, options=list(options), required=True)
+
+
+def render_edit_mode(full_df: pd.DataFrame) -> None:
+    """
+    Éditeur complet:
+      - Colonnes éditables (incl. Statut via Selectbox)
+      - Colonnes dates éditables via Date picker
+      - Colonne _Supprimer avec cases à cocher
+      - Boutons 'Enregistrer' et 'Supprimer les lignes cochées'
+      - num_rows='dynamic' pour autoriser l'ajout direct de lignes si souhaité
+    """
+    with st.expander("✏️ Édition & suppression (toutes les candidatures)", expanded=False):
+        work_df = full_df.copy()
+
+        # Ajoute une colonne temporaire pour marquer les suppressions
+        work_df["_Supprimer"] = False
+
+        edited_df = st.data_editor(
+            work_df,
+            use_container_width=True,
+            hide_index=False,
+            num_rows="dynamic",
+            key="editor_table",
+            column_config={
+                "Code candidature": st.column_config.TextColumn("Code candidature", required=True),
+                "Entreprise": st.column_config.TextColumn("Entreprise", required=True),
+                "Thématique": st.column_config.TextColumn("Thématique"),
+                "Domaine": st.column_config.TextColumn("Domaine"),
+                "Statut": _selectcol("Statut", STATUS_OPTIONS),
+                "Date d'application": _datecol("Date d'application"),
+                "Début de stage": _datecol("Début de stage"),
+                "_Supprimer": st.column_config.CheckboxColumn("_Supprimer"),
+            },
+        )
+
+        c1, c2 = st.columns([1, 1])
+        if c1.button("💾 Enregistrer les modifications", use_container_width=True):
+            to_save = edited_df.drop(columns=["_Supprimer"], errors="ignore").copy()
+            save_applications(to_save)
+            st.success("Modifications enregistrées.")
+            st.rerun()
+
+        if c2.button("🗑️ Supprimer les lignes cochées", use_container_width=True):
+            keep_df = edited_df[~edited_df["_Supprimer"]].drop(columns=["_Supprimer"], errors="ignore")
+            save_applications(keep_df)
+            st.success("Lignes supprimées.")
+            st.rerun()
+
+
+# ------------------------
+# Main
+# ------------------------
 def main() -> None:
-    st.set_page_config(
-        page_title="CarrierWatcher",
-        page_icon="🗂️",
-        layout="wide",
-    )
+    st.set_page_config(page_title="CarrierWatcher", page_icon="🗂️", layout="wide")
 
     st.title("CarrierWatcher")
     st.write(
-        """Application pour suivre vos candidatures de stage de fin d'étude. \
-        Enregistrez vos candidatures, suivez leur statut et visualisez facilement \
-        votre progression."""
+        """Application pour suivre vos candidatures de stage de fin d'étude. 
+        Enregistrez vos candidatures, modifiez leur statut, supprimez des entrées 
+        et visualisez votre progression."""
     )
 
     ensure_data_directory()
     applications_df = load_applications()
 
-
     render_sync_controls()
-
     render_metrics(applications_df)
+
+    # Filtres (pour la vue et les graphes uniquement)
     filtered_df = render_filters(applications_df)
     render_status_chart(filtered_df)
     render_application_table(filtered_df)
+
+    # Formulaire d'ajout
     render_creation_form(applications_df)
+
+    # Mode édition global (modifier / supprimer)
+    render_edit_mode(applications_df)
 
 
 if __name__ == "__main__":
