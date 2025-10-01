@@ -50,12 +50,13 @@ def load_applications() -> pd.DataFrame:
         if c not in df.columns:
             df[c] = ""
 
-    # Normalise types (évite NaN incohérents)
+    # Normalise types
     for c in ["Code candidature", "Entreprise", "Thématique", "Domaine", "Statut"]:
         df[c] = df[c].fillna("").astype(str)
 
-    # Les dates peuvent venir en str, datetime, Timestamp… on laisse tel quel ici.
-    return df[COLUMNS]  # ordre de colonnes garanti
+    # ⚠️ Laisse les dates telles quelles ici; on les parsera côté éditeur
+    return df[COLUMNS]
+
 
 
 def _to_datestr(value: object) -> str:
@@ -262,16 +263,23 @@ def render_edit_mode(full_df: pd.DataFrame) -> None:
     """
     Éditeur complet:
       - Colonnes éditables (incl. Statut via Selectbox)
-      - Colonnes dates éditables via Date picker
+      - Colonnes dates éditables via Date picker (dtype datetime64[ns])
       - Colonne _Supprimer avec cases à cocher
       - Boutons 'Enregistrer' et 'Supprimer les lignes cochées'
-      - num_rows='dynamic' pour autoriser l'ajout direct de lignes si souhaité
+      - num_rows='dynamic' pour autoriser l'ajout direct de lignes
     """
     with st.expander("✏️ Édition & suppression (toutes les candidatures)", expanded=False):
         work_df = full_df.copy()
 
-        # Ajoute une colonne temporaire pour marquer les suppressions
-        work_df["_Supprimer"] = False
+        # 🔧 Assurer les bons dtypes pour l’éditeur
+        date_cols = ["Date d'application", "Début de stage"]
+        for c in date_cols:
+            # Convertit chaînes vides/NaN -> NaT, et 'YYYY-MM-DD' -> Timestamp
+            work_df[c] = pd.to_datetime(work_df[c], errors="coerce")
+
+        if "_Supprimer" not in work_df.columns:
+            work_df["_Supprimer"] = False
+        work_df["_Supprimer"] = work_df["_Supprimer"].fillna(False).astype(bool)
 
         edited_df = st.data_editor(
             work_df,
@@ -284,9 +292,12 @@ def render_edit_mode(full_df: pd.DataFrame) -> None:
                 "Entreprise": st.column_config.TextColumn("Entreprise", required=True),
                 "Thématique": st.column_config.TextColumn("Thématique"),
                 "Domaine": st.column_config.TextColumn("Domaine"),
-                "Statut": _selectcol("Statut", STATUS_OPTIONS),
-                "Date d'application": _datecol("Date d'application"),
-                "Début de stage": _datecol("Début de stage"),
+                "Statut": st.column_config.SelectboxColumn(
+                    "Statut", options=STATUS_OPTIONS, required=True
+                ),
+                # ✅ Ici, dtype datetime64[ns] + DateColumn = OK
+                "Date d'application": st.column_config.DateColumn("Date d'application", format="YYYY-MM-DD"),
+                "Début de stage": st.column_config.DateColumn("Début de stage", format="YYYY-MM-DD"),
                 "_Supprimer": st.column_config.CheckboxColumn("_Supprimer"),
             },
         )
@@ -294,15 +305,21 @@ def render_edit_mode(full_df: pd.DataFrame) -> None:
         c1, c2 = st.columns([1, 1])
         if c1.button("💾 Enregistrer les modifications", use_container_width=True):
             to_save = edited_df.drop(columns=["_Supprimer"], errors="ignore").copy()
+            # Reformatte les dates en 'YYYY-MM-DD' avant persist (ta save() le refait aussi, double filet)
+            for c in date_cols:
+                to_save[c] = to_save[c].map(_to_datestr)
             save_applications(to_save)
             st.success("Modifications enregistrées.")
             st.rerun()
 
         if c2.button("🗑️ Supprimer les lignes cochées", use_container_width=True):
-            keep_df = edited_df[~edited_df["_Supprimer"]].drop(columns=["_Supprimer"], errors="ignore")
+            keep_df = edited_df[~edited_df["_Supprimer"]].drop(columns=["_Supprimer"], errors="ignore").copy()
+            for c in date_cols:
+                keep_df[c] = keep_df[c].map(_to_datestr)
             save_applications(keep_df)
             st.success("Lignes supprimées.")
             st.rerun()
+
 
 
 # ------------------------
