@@ -1,76 +1,99 @@
-# CarrierWatcher
+# 📊 CarrierWatcher
 
-CarrierWatcher est une application Streamlit qui vous aide à suivre manuellement vos candidatures de stage de fin d'étude. Les candidatures sont enregistrées dans un fichier Excel local (`data/applications.xlsx`) et l'interface propose une visualisation claire et professionnelle de votre suivi.
+**CarrierWatcher** is a Streamlit application that helps you **manually track your internship applications**. All applications are stored in a local Excel file (`data/applications.xlsx`), and the interface provides a clear and professional view of your progress.
 
-## Fonctionnalités
+---
 
-- Formulaire simple pour ajouter une candidature (code, entreprise, thématique, domaine, dates, statut).
-- Tableau de bord synthétique avec le nombre total de candidatures, celles acceptées, refusées et en attente.
-- Tableau filtrable par statut, domaine et thématique.
-- Graphique de répartition des candidatures par statut.
-- Stockage local dans un fichier Excel pour conserver toutes les candidatures.
-- Bouton de synchronisation pour importer automatiquement les e-mails de candidature Outlook (Microsoft 365).
+## 🚀 Features
 
+- Simple form to add an application (code, company, topic, domain, dates, status).
+- Dashboard summarizing the total number of applications, accepted, rejected, and pending ones.
+- Filterable table by status, domain, and topic.
+- Chart showing the distribution of applications by status.
+- Local Excel storage to keep all applications organized.
+- Synchronization button to automatically import application emails from Outlook (Microsoft 365).
 
-## Prérequis
+---
 
-- Python 3.9 ou supérieur
+## 🧰 Requirements
 
-## Installation
+- Python 3.9 or higher
+
+---
+
+## 📦 Installation
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Sous Windows : .venv\\Scripts\\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Lancement de l'application
+---
+
+## ▶️ Running the Application
 
 ```bash
 streamlit run app.py
 ```
 
-La première exécution crée automatiquement le dossier `data` ainsi que le fichier Excel de suivi. Vous pouvez ensuite accéder à l'application dans votre navigateur à l'adresse indiquée par Streamlit (généralement http://localhost:8501).
+The first time you run the application, it will automatically create the `data` folder and the Excel tracking file.  
+You can then access the application in your browser at the URL provided by Streamlit (usually `http://localhost:8501`).
 
+---
 
-### Synchroniser votre boîte Outlook
+## 📬 Synchronizing Your Outlook Mailbox
 
-L'application peut importer automatiquement vos candidatures à partir de la boîte mail `ruben.sylla@edu.ece.fr` (ou tout autre compte Microsoft 365) à l'aide de Microsoft Graph. Deux options sont disponibles :
+The application can automatically import your internship applications from the mailbox `ruben.sylla@edu.ece.fr` (or any other Microsoft 365 account) using the Microsoft Graph API. There are two synchronization options:
 
-1. **Depuis l'interface Streamlit** : cliquez sur le bouton « Synchroniser la boîte mail maintenant » pour lancer une synchronisation ponctuelle. Un résumé des e-mails scannés, des candidatures créées et mises à jour s'affiche ensuite.
-2. **Via le script autonome** : exécutez `python mail_sync.py` pour synchroniser sans démarrer Streamlit (pratique pour un déclenchement manuel ou planifié).
+1. **From the Streamlit interface:** Click on **“Synchronize mailbox now”** to launch a one-time synchronization. A summary of scanned emails, created applications, and updates will then be displayed.  
+2. **From a standalone script:** Run `python mail_sync.py` to synchronize without starting Streamlit (useful for manual or scheduled runs).
 
-Avant la première synchronisation :
+---
 
-1. Créez une application Microsoft Entra ID (Azure AD) depuis [portal.azure.com](https://portal.azure.com).
-   - Type de compte : « Accounts in any organizational directory ».
-   - Notez l'**Application (client) ID**.
-2. Dans « API permissions », ajoutez les permissions déléguées **Mail.Read** et **offline_access** pour Microsoft Graph, puis accordez le consentement administrateur si nécessaire.
-3. Définissez la variable d'environnement `AZURE_CLIENT_ID` avec l'identifiant client récupéré.
+### 🛠️ First-Time Setup
 
-Au premier lancement du script (via le bouton Streamlit ou la commande `python mail_sync.py`), Microsoft vous affichera une URL et un code à saisir pour autoriser l'accès à la boîte mail. Les jetons d'accès sont mis en cache dans `data/token_cache.json` afin d'éviter de devoir se reconnecter à chaque synchronisation.
+Before the first synchronization:
 
-Les e-mails détectés sont rapprochés des candidatures existantes en se basant sur le nom de l'entreprise. Lorsqu'un nouvel e-mail est importé, l'application :
+1. Create a Microsoft Entra ID (Azure AD) application from [portal.azure.com](https://portal.azure.com).  
+   - Account type: “Accounts in any organizational directory”.  
+   - Save the **Application (client) ID**.
+2. In **API permissions**, add the delegated permissions **Mail.Read** and **offline_access** for Microsoft Graph, then grant admin consent if required.
+3. Set the `AZURE_CLIENT_ID` environment variable with the retrieved client ID.
 
-- crée une ligne si aucune candidature correspondante n'existe encore ;
-- met à jour le statut selon des mots-clés (En attente, Entretien, Acceptée, Refusée) ;
-- enregistre la date du dernier e-mail et indique « email » dans la colonne « Source ».
+When you run the script for the first time (via the Streamlit button or with `python mail_sync.py`), Microsoft will display a URL and a code to authorize mailbox access.  
+Access tokens are cached in `data/token_cache.json` so you don’t have to log in again for future synchronizations.
 
-Vous pouvez également lancer la synchronisation automatiquement via le Planificateur Windows en exécutant régulièrement `python mail_sync.py`.
+---
 
-## Structure du fichier Excel
+### 📧 Email Import Behavior
 
-Chaque ligne du fichier `data/applications.xlsx` contient les informations suivantes :
+Detected emails are matched with existing applications based on the **company name**. When a new email is imported, the application will:
 
-- Code candidature
-- Entreprise
-- Thématique
-- Domaine
-- Statut
-- Date d'application
-- Début de stage
-- Dernier mail (horodatage du dernier e-mail synchronisé)
-- Source ("email" lorsqu'une candidature provient de la synchronisation)
+- Create a new row if no matching application exists.  
+- Update the status based on keywords (*Pending*, *Interview*, *Accepted*, *Rejected*).  
+- Save the date of the last email and mark **"email"** in the **Source** column.
 
+You can also automate synchronization using **Windows Task Scheduler** by regularly running:
 
-Ces colonnes peuvent être enrichies manuellement dans Excel si nécessaire, l'application les conservera lors des lectures suivantes.
+```bash
+python mail_sync.py
+```
+
+---
+
+## 📊 Excel File Structure
+
+Each row in `data/applications.xlsx` contains the following information:
+
+- Application code  
+- Company  
+- Topic  
+- Domain  
+- Status  
+- Application date  
+- Internship start date  
+- Last email (timestamp of the last synchronized email)  
+- Source ("email" when the application is created from synchronization)
+
+These columns can also be manually edited in Excel if necessary — the application will keep them intact on future reads.
