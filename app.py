@@ -1,4 +1,3 @@
-"""Streamlit app for managing internship applications."""
 from __future__ import annotations
 
 import importlib
